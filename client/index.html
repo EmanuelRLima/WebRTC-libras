@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Call</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>WebRTC 1-to-1 Call</h1>
+
+    <div class="connection-info">
+      <p>Your ID: <strong id="myId">Connecting...</strong></p>
+      <div class="call-controls">
+        <input type="text" id="targetId" placeholder="Recipient ID">
+        <button id="callBtn">Call</button>
+      </div>
+    </div>
+
+    <div class="videos">
+      <div class="video-container">
+        <video id="localVideo" autoplay muted playsinline></video>
+        <p>You</p>
+      </div>
+      <div class="video-container">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <p>Remote</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="muteBtn" class="control-btn">🎤 Mute</button>
+      <button id="videoBtn" class="control-btn">📹 Video</button>
+      <button id="hangupBtn" class="control-btn danger">📞 Hang Up</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

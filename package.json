@@ -1,0 +1,24 @@
+{
+  "name": "webrtc-libras",
+  "version": "1.0.0",
+  "description": "WebRTC-libras",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "ws": "^8.14.2",
+    "express": "^4.18.2"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EmanuelRLima/WebRTC-libras.git"
+  },
+  "author": "Emanuel Lima",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/EmanuelRLima/WebRTC-libras/issues"
+  },
+  "homepage": "https://github.com/EmanuelRLima/WebRTC-libras#readme"
+}
