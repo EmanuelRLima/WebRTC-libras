@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atendimento WebRTC - Atendente</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .attendant-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .attendant-header {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    .attendant-header h2 {
+      margin: 0 0 15px 0;
+      color: #333;
+    }
+
+    .attendant-form {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .attendant-form input {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+
+    .attendant-form button {
+      padding: 12px 30px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .attendant-form button:hover {
+      background: #1976D2;
+    }
+
+    .attendant-form button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .queue-panel {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    .queue-panel h3 {
+      margin: 0 0 15px 0;
+      color: #333;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .queue-count {
+      background: #FF9800;
+      color: white;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .queue-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .queue-item {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-left: 4px solid #2196F3;
+      transition: all 0.3s;
+    }
+
+    .queue-item:hover {
+      background: #e9ecef;
+      transform: translateX(5px);
+    }
+
+    .queue-item-info {
+      flex: 1;
+    }
+
+    .queue-item-name {
+      font-weight: bold;
+      font-size: 16px;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .queue-item-details {
+      font-size: 14px;
+      color: #666;
+    }
+
+    .queue-item-time {
+      font-size: 12px;
+      color: #999;
+      margin-top: 3px;
+    }
+
+    .accept-btn {
+      padding: 10px 20px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .accept-btn:hover {
+      background: #45a049;
+      transform: scale(1.05);
+    }
+
+    .empty-queue {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+    }
+
+    .empty-queue-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4CAF50;
+      color: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 1000;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .status-online {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-busy {
+      background: #fff3cd;
+      color: #856404;
+    }
+  </style>
+</head>
+<body>
+  <div class="container attendant-container">
+    <h1>👨‍💼 Painel do Atendente</h1>
+
+    <!-- Formulário de Registro do Atendente -->
+    <div id="attendantRegistration" class="attendant-header">
+      <h2>Identificação</h2>
+      <div class="attendant-form">
+        <input type="text" id="attendantName" placeholder="Digite seu nome" required>
+        <button id="registerBtn">Entrar como Atendente</button>
+      </div>
+      <div id="regStatus" class="status"></div>
+    </div>
+
+    <!-- Status do Atendente -->
+    <div id="attendantStatus" class="attendant-header hidden">
+      <h2>Bem-vindo, <span id="displayName">-</span>!</h2>
+      <div>
+        Status: <span id="statusBadge" class="status-badge status-online">🟢 Disponível</span>
+      </div>
+    </div>
+
+    <!-- Painel de Fila -->
+    <div id="queuePanel" class="queue-panel hidden">
+      <h3>
+        Fila de Atendimento
+        <span class="queue-count" id="queueCount">0</span>
+      </h3>
+      <div id="queueList" class="queue-list">
+        <div class="empty-queue">
+          <div class="empty-queue-icon">📋</div>
+          <p>Nenhum usuário na fila no momento</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interface de Chamada -->
+    <div id="callInterface" class="hidden">
+      <div class="connection-info">
+        <p>Atendendo: <strong id="userName">-</strong></p>
+      </div>
+
+      <div class="videos">
+        <div class="video-container">
+          <video id="localVideo" autoplay muted playsinline></video>
+          <p>Você</p>
+        </div>
+        <div class="video-container">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <p>Usuário</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="muteBtn" class="control-btn">🎤 Mutar</button>
+        <button id="videoBtn" class="control-btn">📹 Câmera</button>
+        <button id="hangupBtn" class="control-btn danger">📞 Encerrar</button>
+      </div>
+
+      <div id="callStatus" class="status"></div>
+    </div>
+  </div>
+
+  <script src="attendant.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ms-vscode.node-debug2",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ritwickdey.liveserver"
+  ],
+  "unwantedRecommendations": []
+}
