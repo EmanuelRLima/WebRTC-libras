@@ -12,11 +12,10 @@ let recordingCanvas = null;
 let recordingContext = null;
 let recordingAnimationFrame = null;
 let recordingAudioContext = null;
-let roomIsRecording = false; // Controla se alguém já está gravando
+let roomIsRecording = false;
 
-// Map<peerId, RTCPeerConnection>
 const peerConnections = new Map();
-// Map<peerId, HTMLElement> — tile no grid
+
 const peerTiles = new Map();
 
 const configuration = {
@@ -26,7 +25,7 @@ const configuration = {
   ]
 };
 
-// Lobby
+
 const lobbyEl     = document.getElementById('lobby');
 const roomEl      = document.getElementById('room');
 const myIdElement = document.getElementById('myId');
@@ -34,7 +33,6 @@ const roomIdInput = document.getElementById('roomId');
 const joinBtn     = document.getElementById('joinBtn');
 const lobbyStatus = document.getElementById('lobbyStatus');
 
-// Sala
 const videosGrid  = document.getElementById('videosGrid');
 const roomLabel   = document.getElementById('roomLabel');
 const muteBtn     = document.getElementById('muteBtn');
@@ -43,7 +41,6 @@ const recordBtn   = document.getElementById('recordBtn');
 const hangupBtn   = document.getElementById('hangupBtn');
 const statusElement = document.getElementById('status');
 
-// ── Tiles ───────────────────────────────────────────
 
 function createTile(id, label, stream, isLocal) {
   const tile = document.createElement('div');
@@ -97,16 +94,13 @@ function setTileStream(tile, stream) {
   tile.classList.add('has-video');
 }
 
-// ── WebSocket ────────────────────────────────────────
-
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}`;
-  console.log('Conectando ao WebSocket:', wsUrl);
+  
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    console.log('WebSocket conectado');
     showLobbyStatus('Conectado ao servidor', 'success');
     joinBtn.disabled = false;
   };
@@ -114,17 +108,13 @@ function connectWebSocket() {
   ws.onmessage = async (event) => {
     try {
       const data = JSON.parse(event.data);
-      console.log('Mensagem recebida:', data.type, data);
-
       switch (data.type) {
         case 'init':
           myId = data.id;
           myIdElement.textContent = myId;
-          console.log('Inicializado com ID:', myId);
           break;
 
         case 'room-joined':
-          console.log('Entrando na sala:', data.room, 'peers:', data.peers);
           await enterRoom(data.room, data.peers);
           break;
 
@@ -134,7 +124,6 @@ function connectWebSocket() {
           break;
 
         case 'peer-joined':
-          // O novo par enviará um offer; apenas aguardamos
           showStatus(`Novo participante entrando...`, 'info');
           break;
 
@@ -173,30 +162,22 @@ function connectWebSocket() {
           break;
       }
     } catch (error) {
-      console.error('Erro ao processar mensagem:', error);
     }
   };
 
   ws.onerror = (error) => {
-    console.error('Erro no WebSocket:', error);
     showLobbyStatus('Falha na conexão WebSocket', 'error');
     joinBtn.disabled = true;
   };
 
   ws.onclose = () => {
-    console.log('WebSocket desconectado');
     showLobbyStatus('Desconectado do servidor', 'error');
     joinBtn.disabled = true;
-    
-    // Tenta reconectar após 3 segundos
     setTimeout(() => {
-      console.log('Tentando reconectar...');
       connectWebSocket();
     }, 3000);
   };
 }
-
-// ── Fluxo da sala ────────────────────────────────────
 
 async function joinRoom() {
   const room = roomIdInput.value.trim();
@@ -205,10 +186,8 @@ async function joinRoom() {
     return;
   }
 
-  // Verifica se o WebSocket está conectado
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     showLobbyStatus('Aguardando conexão com o servidor...', 'error');
-    console.error('WebSocket não está conectado');
     return;
   }
 
@@ -216,43 +195,30 @@ async function joinRoom() {
 
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    console.log('Mídia local obtida com sucesso');
   } catch (error) {
     showLobbyStatus('Falha ao acessar câmera/microfone', 'error');
-    console.error('Erro ao acessar mídia:', error);
     return;
   }
 
   currentRoom = room;
-  console.log('Enviando join-room para sala:', room);
   sendMessage({ type: 'join-room', room });
   showLobbyStatus('Entrando na sala...', 'info');
 }
 
 async function enterRoom(room, peers) {
-  console.log('enterRoom chamada - sala:', room, 'peers:', peers);
-  
   try {
-    // Troca de tela
     lobbyEl.classList.add('hidden');
     roomEl.classList.remove('hidden');
     roomLabel.textContent = `Sala: ${room}`;
-
-    // Tile local
     const localTile = createTile(myId, 'Você', localStream, true);
     peerTiles.set(myId, localTile);
 
     showStatus(`${peers.length + 1} participante(s)`, 'success');
-
-    // Inicia chamada com cada par existente
     for (const peerId of peers) {
-      console.log('Iniciando chamada para peer:', peerId);
       await startCallTo(peerId);
     }
-    
-    console.log('Sala configurada com sucesso');
   } catch (error) {
-    console.error('Erro em enterRoom:', error);
+    
     showLobbyStatus('Erro ao entrar na sala: ' + error.message, 'error');
   }
 }
@@ -316,7 +282,7 @@ async function handleIceCandidate(data) {
     try {
       await pc.addIceCandidate(data.candidate);
     } catch (e) {
-      console.error('Erro ao adicionar ICE candidate:', e);
+
     }
   }
 }
@@ -327,8 +293,6 @@ function handlePeerLeft(peerId) {
   if (pc) { pc.close(); peerConnections.delete(peerId); }
   showStatus('Um participante saiu', 'info');
 }
-
-// ── Controles ────────────────────────────────────────
 
 function sendMessage(msg) {
   ws.send(JSON.stringify(msg));
@@ -349,8 +313,6 @@ function toggleVideo() {
   videoBtn.classList.toggle('off', isVideoMuted);
   videoBtn.textContent = isVideoMuted ? '🚫' : '📹';
 }
-
-// ── Recording ────────────────────────────────────────
 
 function toggleRecording() {
   if (!isRecording) {
@@ -373,22 +335,14 @@ function startRecording() {
 
   try {
     recordedChunks = [];
-    
-    // Cria canvas para capturar todo o grid de vídeos
     recordingCanvas = document.createElement('canvas');
     recordingCanvas.width = 1920;
     recordingCanvas.height = 1080;
     recordingContext = recordingCanvas.getContext('2d', { willReadFrequently: true });
-    
-    // Combina todos os áudios da sala
     recordingAudioContext = new AudioContext();
     const mixedAudioDestination = recordingAudioContext.createMediaStreamDestination();
-    
-    // Adiciona áudio local
     const localAudioSource = recordingAudioContext.createMediaStreamSource(localStream);
     localAudioSource.connect(mixedAudioDestination);
-    
-    // Adiciona áudio dos peers
     for (const [peerId, tile] of peerTiles) {
       if (peerId !== myId) {
         const video = tile.querySelector('video');
@@ -397,36 +351,24 @@ function startRecording() {
             const peerAudioSource = recordingAudioContext.createMediaStreamSource(video.srcObject);
             peerAudioSource.connect(mixedAudioDestination);
           } catch (e) {
-            console.warn('Erro ao adicionar áudio do peer:', e);
           }
         }
       }
     }
-    
-    // Função para desenhar todos os vídeos no canvas
     function drawVideosToCanvas() {
       if (!isRecording) return;
-      
-      // Limpa canvas com fundo escuro
       recordingContext.fillStyle = '#1a1a2e';
       recordingContext.fillRect(0, 0, recordingCanvas.width, recordingCanvas.height);
-      
-      // Pega todos os tiles de vídeo
       const tiles = Array.from(peerTiles.values());
       const totalTiles = tiles.length;
-      
       if (totalTiles > 0) {
-        // Calcula layout do grid
         let cols, rows;
         if (totalTiles === 1) { cols = 1; rows = 1; }
         else if (totalTiles === 2) { cols = 2; rows = 1; }
         else if (totalTiles <= 4) { cols = 2; rows = 2; }
         else { cols = 3; rows = 2; }
-        
         const tileWidth = recordingCanvas.width / cols;
         const tileHeight = recordingCanvas.height / rows;
-        
-        // Desenha cada vídeo
         tiles.forEach((tile, index) => {
           const video = tile.querySelector('video');
           if (video && video.readyState >= video.HAVE_CURRENT_DATA && !video.paused) {
@@ -436,10 +378,7 @@ function startRecording() {
             const y = row * tileHeight;
             
             try {
-              // Desenha o vídeo mantendo proporção
               recordingContext.drawImage(video, x, y, tileWidth, tileHeight);
-              
-              // Desenha label do participante
               const label = tile.querySelector('.tile-label');
               if (label) {
                 recordingContext.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -449,13 +388,10 @@ function startRecording() {
                 recordingContext.fillText(label.textContent, x + 20, y + tileHeight - 18);
               }
             } catch (e) {
-              console.warn('Erro ao desenhar vídeo no canvas:', e);
             }
           }
         });
       }
-      
-      // Adiciona timestamp
       const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
       const minutes = Math.floor(elapsed / 60);
       const seconds = elapsed % 60;
@@ -464,26 +400,26 @@ function startRecording() {
       recordingContext.fillStyle = '#ffffff';
       recordingContext.font = 'bold 20px Arial';
       recordingContext.fillText(`⏺ ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`, 20, 35);
-      
       recordingAnimationFrame = requestAnimationFrame(drawVideosToCanvas);
     }
     
-    // Aguarda um pouco para garantir que os vídeos estão prontos
     setTimeout(() => {
-      // Inicia o desenho no canvas
       drawVideosToCanvas();
-      
-      // Captura o stream do canvas + áudio mixado
-      const canvasStream = recordingCanvas.captureStream(30); // 30 FPS
+      const canvasStream = recordingCanvas.captureStream(30);
       const videoTrack = canvasStream.getVideoTracks()[0];
       const audioTracks = mixedAudioDestination.stream.getAudioTracks();
       const recordStream = new MediaStream([videoTrack, ...audioTracks]);
-      
+      let mimeType = 'video/mp4';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/mp4;codecs=h264,aac';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp9,opus';
+      }
       mediaRecorder = new MediaRecorder(recordStream, {
-        mimeType: 'video/webm;codecs=vp9,opus',
-        videoBitsPerSecond: 2500000 // 2.5 Mbps para melhor qualidade
+        mimeType: mimeType,
+        videoBitsPerSecond: 2500000
       });
-
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           recordedChunks.push(event.data);
@@ -491,54 +427,38 @@ function startRecording() {
       };
 
       mediaRecorder.onstop = async () => {
-        // Para a animação do canvas
         if (recordingAnimationFrame) {
           cancelAnimationFrame(recordingAnimationFrame);
           recordingAnimationFrame = null;
         }
-        
-        // Fecha o audio context
         if (recordingAudioContext) {
           recordingAudioContext.close();
           recordingAudioContext = null;
         }
-        
-        // Notifica outros participantes que a gravação parou
         sendMessage({ type: 'recording-stopped', recorderId: myId });
         roomIsRecording = false;
-        
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const mimeType = mediaRecorder.mimeType || 'video/mp4';
+      const blob = new Blob(recordedChunks, { type: mimeType });
         const duration = Date.now() - recordingStartTime;
-        
         showStatus(`Gravação finalizada (${Math.round(duration/1000)}s). Enviando para S3...`, 'info');
-        
         await uploadRecording(blob);
-        
-        // Limpa canvas
         recordingCanvas = null;
         recordingContext = null;
       };
 
-      mediaRecorder.start(1000); // Captura dados a cada 1s
-      console.log('MediaRecorder iniciado');
+      mediaRecorder.start(1000);
     }, 500);
-    
     recordingStartTime = Date.now();
     isRecording = true;
     roomIsRecording = true;
-    
-    // Notifica outros participantes que iniciou a gravação
     sendMessage({ type: 'recording-started', recorderId: myId });
     
     recordBtn.classList.add('recording');
     recordBtn.textContent = '⏹️';
     showStatus('Gravando todos os participantes...', 'success');
-    
   } catch (error) {
-    console.error('Erro ao iniciar gravação:', error);
-    showStatus('Erro ao iniciar gravação: ' + error.message, 'error');
     
-    // Limpa recursos em caso de erro
+    showStatus('Erro ao iniciar gravação: ' + error.message, 'error');
     if (recordingAnimationFrame) cancelAnimationFrame(recordingAnimationFrame);
     if (recordingAudioContext) recordingAudioContext.close();
     roomIsRecording = false;
@@ -557,7 +477,8 @@ function stopRecording() {
 async function uploadRecording(blob) {
   try {
     const formData = new FormData();
-    formData.append('recording', blob, `recording_${Date.now()}.webm`);
+    const extension = mediaRecorder && mediaRecorder.mimeType && mediaRecorder.mimeType.includes('webm') ? 'webm' : 'mp4';
+    formData.append('recording', blob, `recording_${Date.now()}.${extension}`);
     formData.append('roomId', currentRoom);
     formData.append('timestamp', Date.now());
 
@@ -570,9 +491,6 @@ async function uploadRecording(blob) {
 
     if (response.ok) {
       showStatus('Gravação enviada para S3 com sucesso!', 'success');
-      console.log('Upload successful:', result);
-      
-      // Opcional: download local como backup
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -583,42 +501,31 @@ async function uploadRecording(blob) {
       URL.revokeObjectURL(url);
     } else {
       showStatus('Erro ao enviar gravação: ' + result.error, 'error');
-      console.error('Upload failed:', result);
     }
   } catch (error) {
-    console.error('Erro no upload:', error);
     showStatus('Erro ao enviar gravação: ' + error.message, 'error');
   }
 }
 
 function hangup() {
-  // Para gravação se estiver ativa
   if (isRecording) {
     stopRecording();
   }
   
   for (const [, pc] of peerConnections) pc.close();
   peerConnections.clear();
-
   if (localStream) {
     localStream.getTracks().forEach(t => t.stop());
     localStream = null;
   }
-
-  // Limpa grid
   videosGrid.innerHTML = '';
   peerTiles.clear();
   updateGridCount();
-
   currentRoom = null;
-
-  // Volta ao lobby
   roomEl.classList.add('hidden');
   lobbyEl.classList.remove('hidden');
   showLobbyStatus('Você saiu da sala', 'info');
 }
-
-// ── Status ───────────────────────────────────────────
 
 function showStatus(message, type) {
   statusElement.textContent = message;
@@ -640,9 +547,6 @@ function showLobbyStatus(message, type) {
     type === 'error'   ? '#721c24' : '#0c5460';
 }
 
-// ── Init ─────────────────────────────────────────────
-
-// Desabilita o botão até conectar
 joinBtn.disabled = true;
 showLobbyStatus('Conectando ao servidor...', 'info');
 

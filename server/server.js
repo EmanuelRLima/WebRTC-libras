@@ -11,20 +11,7 @@ import { Upload } from '@aws-sdk/lib-storage';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env from project root
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
-
-// Validate AWS credentials
-if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-  console.error('⚠️  WARNING: AWS credentials not found in .env file');
-  console.error('   Recording upload to S3 will not work!');
-  console.error('   Please configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env');
-} else {
-  console.log('✅ AWS credentials loaded successfully');
-  console.log(`   Region: ${process.env.AWS_REGION || 'us-east-1'}`);
-  console.log(`   Bucket: ${process.env.AWS_S3_BUCKET || 'not configured'}`);
-  console.log(`   Access Key: ${process.env.AWS_ACCESS_KEY_ID.substring(0, 8)}...`);
-}
 
 const app = express();
 const server = createServer(app);
@@ -33,7 +20,6 @@ const wss = new WebSocketServer({ server });
 app.use(express.static(path.join(__dirname, '../client')));
 app.use(express.json());
 
-// Configure AWS S3
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'us-east-1',
   credentials: {
@@ -42,21 +28,19 @@ const s3Client = new S3Client({
   }
 });
 
-// Configure multer for memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 500 * 1024 * 1024 // 500MB max
+    fileSize: 500 * 1024 * 1024
   }
 });
 
 const MAX_ROOM_SIZE = 5;
 
-// clients: Map<clientId, ws>
 const clients = new Map();
-// rooms: Map<roomId, Set<clientId>>
+
 const rooms = new Map();
-// clientRoom: Map<clientId, roomId>
+
 const clientRoom = new Map();
 
 wss.on('connection', (ws) => {
@@ -91,19 +75,16 @@ wss.on('connection', (ws) => {
             return;
           }
 
-          // Notifica os membros existentes sobre o novo participante
           const existingMembers = Array.from(room);
           room.add(clientId);
           clientRoom.set(clientId, roomId);
 
-          // Envia ao novo cliente a lista de membros já na sala
           ws.send(JSON.stringify({
             type: 'room-joined',
             room: roomId,
             peers: existingMembers
           }));
 
-          // Notifica cada membro existente sobre o novo participante
           for (const peerId of existingMembers) {
             const peerWs = clients.get(peerId);
             if (peerWs) {
@@ -122,7 +103,6 @@ wss.on('connection', (ws) => {
         case 'offer':
         case 'answer':
         case 'ice-candidate': {
-          // Mensagens diretas entre pares (target obrigatório)
           if (data.target && clients.has(data.target)) {
             clients.get(data.target).send(JSON.stringify({
               ...data,
@@ -134,7 +114,6 @@ wss.on('connection', (ws) => {
 
         case 'recording-started':
         case 'recording-stopped': {
-          // Notifica todos os membros da sala sobre o status da gravação
           const roomId = clientRoom.get(clientId);
           if (roomId && rooms.has(roomId)) {
             const room = rooms.get(roomId);
@@ -154,7 +133,6 @@ wss.on('connection', (ws) => {
         }
 
         default:
-          // Fallback: repasse direto se houver target
           if (data.target && clients.has(data.target)) {
             clients.get(data.target).send(JSON.stringify({
               ...data,
@@ -174,7 +152,6 @@ wss.on('connection', (ws) => {
       const room = rooms.get(roomId);
       room.delete(clientId);
 
-      // Notifica os demais membros da saída
       for (const peerId of room) {
         const peerWs = clients.get(peerId);
         if (peerWs) {
@@ -201,7 +178,6 @@ function generateId() {
   return Math.random().toString(36).substring(2, 15);
 }
 
-// Upload recording to S3
 app.post('/api/upload-recording', upload.single('recording'), async (req, res) => {
   try {
     if (!req.file) {
@@ -209,7 +185,9 @@ app.post('/api/upload-recording', upload.single('recording'), async (req, res) =
     }
 
     const { roomId, timestamp } = req.body;
-    const fileName = `${process.env.S3_RECORDINGS_FOLDER || 'webrtc-recordings/'}${roomId}_${timestamp}.webm`;
+    const contentType = req.file.mimetype;
+    const extension = contentType.includes('webm') ? 'webm' : 'mp4';
+    const fileName = `${process.env.S3_RECORDINGS_FOLDER || 'webrtc-recordings/'}${roomId}_${timestamp}.${extension}`;
 
     console.log(`Uploading recording to S3: ${fileName}`);
 
@@ -219,7 +197,7 @@ app.post('/api/upload-recording', upload.single('recording'), async (req, res) =
         Bucket: process.env.AWS_S3_BUCKET,
         Key: fileName,
         Body: req.file.buffer,
-        ContentType: 'video/webm'
+        ContentType: req.file.mimetype || 'video/mp4'
       }
     });
 
