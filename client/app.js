@@ -54,7 +54,10 @@ function createTile(id, label, stream, isLocal) {
   const video = document.createElement('video');
   video.autoplay = true;
   video.playsinline = true;
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
   if (isLocal) video.muted = true;
+  if (isLocal) video.setAttribute('muted', '');
 
   const lbl = document.createElement('span');
   lbl.className = 'tile-label';
@@ -64,13 +67,15 @@ function createTile(id, label, stream, isLocal) {
   tile.appendChild(video);
   tile.appendChild(lbl);
 
+  videosGrid.appendChild(tile);
+  updateGridCount();
+
   if (stream) {
     video.srcObject = stream;
     tile.classList.add('has-video');
+    video.play().catch(() => {});
   }
 
-  videosGrid.appendChild(tile);
-  updateGridCount();
   return tile;
 }
 
@@ -92,6 +97,7 @@ function setTileStream(tile, stream) {
   const video = tile.querySelector('video');
   video.srcObject = stream;
   tile.classList.add('has-video');
+  video.play().catch(() => {});
 }
 
 function connectWebSocket() {
@@ -115,7 +121,7 @@ function connectWebSocket() {
           break;
 
         case 'room-joined':
-          await enterRoom(data.room, data.peers);
+          await enterRoom(data.room, data.peers.filter(id => id !== myId));
           break;
 
         case 'room-full':
@@ -171,8 +177,26 @@ function connectWebSocket() {
   };
 
   ws.onclose = () => {
-    showLobbyStatus('Desconectado do servidor', 'error');
+    showLobbyStatus('Desconectado do servidor. Reconectando...', 'error');
     joinBtn.disabled = true;
+
+    if (currentRoom) {
+      for (const [, pc] of peerConnections) pc.close();
+      peerConnections.clear();
+      peerTiles.clear();
+      videosGrid.innerHTML = '';
+      updateGridCount();
+      currentRoom = null;
+      isAudioMuted = false;
+      isVideoMuted = false;
+      muteBtn.classList.remove('off');
+      muteBtn.textContent = '🎤';
+      videoBtn.classList.remove('off');
+      videoBtn.textContent = '📹';
+      roomEl.classList.add('hidden');
+      lobbyEl.classList.remove('hidden');
+    }
+
     setTimeout(() => {
       connectWebSocket();
     }, 3000);
@@ -194,11 +218,23 @@ async function joinRoom() {
   showLobbyStatus('Acessando câmera/microfone...', 'info');
 
   try {
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+      localStream = null;
+    }
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   } catch (error) {
     showLobbyStatus('Falha ao acessar câmera/microfone', 'error');
     return;
   }
+
+  lobbyEl.classList.add('hidden');
+  roomEl.classList.remove('hidden');
+  videosGrid.innerHTML = '';
+  peerTiles.clear();
+  updateGridCount();
+  const localTile = createTile(myId, 'Você', localStream, true);
+  peerTiles.set(myId, localTile);
 
   currentRoom = room;
   sendMessage({ type: 'join-room', room });
@@ -207,23 +243,23 @@ async function joinRoom() {
 
 async function enterRoom(room, peers) {
   try {
-    lobbyEl.classList.add('hidden');
-    roomEl.classList.remove('hidden');
     roomLabel.textContent = `Sala: ${room}`;
-    const localTile = createTile(myId, 'Você', localStream, true);
-    peerTiles.set(myId, localTile);
-
     showStatus(`${peers.length + 1} participante(s)`, 'success');
     for (const peerId of peers) {
       await startCallTo(peerId);
     }
   } catch (error) {
-    
     showLobbyStatus('Erro ao entrar na sala: ' + error.message, 'error');
   }
 }
 
 function createPeerConnection(peerId) {
+  const existing = peerConnections.get(peerId);
+  if (existing) {
+    existing.close();
+    peerConnections.delete(peerId);
+  }
+
   const pc = new RTCPeerConnection(configuration);
 
   localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
@@ -511,7 +547,29 @@ function hangup() {
   if (isRecording) {
     stopRecording();
   }
-  
+
+  if (recordingAnimationFrame) {
+    cancelAnimationFrame(recordingAnimationFrame);
+    recordingAnimationFrame = null;
+  }
+  if (recordingAudioContext) {
+    recordingAudioContext.close().catch(() => {});
+    recordingAudioContext = null;
+  }
+  isRecording = false;
+  roomIsRecording = false;
+  recordBtn.disabled = false;
+  recordBtn.style.opacity = '1';
+  recordBtn.classList.remove('recording');
+  recordBtn.textContent = '⏺️';
+
+  isAudioMuted = false;
+  isVideoMuted = false;
+  muteBtn.classList.remove('off');
+  muteBtn.textContent = '🎤';
+  videoBtn.classList.remove('off');
+  videoBtn.textContent = '📹';
+
   for (const [, pc] of peerConnections) pc.close();
   peerConnections.clear();
   if (localStream) {
@@ -521,6 +579,9 @@ function hangup() {
   videosGrid.innerHTML = '';
   peerTiles.clear();
   updateGridCount();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    sendMessage({ type: 'leave-room' });
+  }
   currentRoom = null;
   roomEl.classList.add('hidden');
   lobbyEl.classList.remove('hidden');

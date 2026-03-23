@@ -17,7 +17,13 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.static(path.join(__dirname, '../client')));
+app.use(express.static(path.join(__dirname, '../client'), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-store');
+  }
+}));
 app.use(express.json());
 
 const s3Client = new S3Client({
@@ -46,8 +52,9 @@ const clientRoom = new Map();
 wss.on('connection', (ws) => {
   const clientId = generateId();
   clients.set(clientId, ws);
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
 
-  console.log(`Client connected: ${clientId}`);
 
   ws.send(JSON.stringify({
     type: 'init',
@@ -57,12 +64,23 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-      console.log(`Message from ${clientId}:`, data.type);
 
       switch (data.type) {
         case 'join-room': {
           const roomId = data.room;
-          console.log(`Client ${clientId} trying to join room ${roomId}`);
+          const prevRoomId = clientRoom.get(clientId);
+          if (prevRoomId && rooms.has(prevRoomId)) {
+            const prevRoom = rooms.get(prevRoomId);
+            prevRoom.delete(clientId);
+            for (const peerId of prevRoom) {
+              const peerWs = clients.get(peerId);
+              if (peerWs) {
+                peerWs.send(JSON.stringify({ type: 'peer-left', peerId: clientId, room: prevRoomId }));
+              }
+            }
+            if (prevRoom.size === 0) rooms.delete(prevRoomId);
+            clientRoom.delete(clientId);
+          }
 
           if (!rooms.has(roomId)) {
             rooms.set(roomId, new Set());
@@ -95,8 +113,6 @@ wss.on('connection', (ws) => {
               }));
             }
           }
-
-          console.log(`Client ${clientId} joined room ${roomId} (${room.size}/${MAX_ROOM_SIZE})`);
           break;
         }
 
@@ -108,6 +124,23 @@ wss.on('connection', (ws) => {
               ...data,
               from: clientId
             }));
+          }
+          break;
+        }
+
+        case 'leave-room': {
+          const leaveRoomId = clientRoom.get(clientId);
+          if (leaveRoomId && rooms.has(leaveRoomId)) {
+            const room = rooms.get(leaveRoomId);
+            room.delete(clientId);
+            for (const peerId of room) {
+              const peerWs = clients.get(peerId);
+              if (peerWs) {
+                peerWs.send(JSON.stringify({ type: 'peer-left', peerId: clientId, room: leaveRoomId }));
+              }
+            }
+            if (room.size === 0) rooms.delete(leaveRoomId);
+            clientRoom.delete(clientId);
           }
           break;
         }
@@ -170,13 +203,23 @@ wss.on('connection', (ws) => {
 
     clientRoom.delete(clientId);
     clients.delete(clientId);
-    console.log(`Client disconnected: ${clientId}`);
   });
 });
 
 function generateId() {
   return Math.random().toString(36).substring(2, 15);
 }
+
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (!ws.isAlive) {
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 5000);
 
 app.post('/api/upload-recording', upload.single('recording'), async (req, res) => {
   try {
@@ -188,8 +231,6 @@ app.post('/api/upload-recording', upload.single('recording'), async (req, res) =
     const contentType = req.file.mimetype;
     const extension = contentType.includes('webm') ? 'webm' : 'mp4';
     const fileName = `${process.env.S3_RECORDINGS_FOLDER || 'webrtc-recordings/'}${roomId}_${timestamp}.${extension}`;
-
-    console.log(`Uploading recording to S3: ${fileName}`);
 
     const upload = new Upload({
       client: s3Client,
@@ -203,15 +244,12 @@ app.post('/api/upload-recording', upload.single('recording'), async (req, res) =
 
     const result = await upload.done();
 
-    console.log('Upload completed:', result.Location);
-
     res.json({
       success: true,
       url: result.Location,
       key: fileName
     });
   } catch (error) {
-    console.error('Error uploading to S3:', error);
     res.status(500).json({
       error: 'Failed to upload recording',
       message: error.message
