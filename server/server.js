@@ -7,6 +7,12 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import { createReadStream, createWriteStream, unlink } from 'fs';
+import { tmpdir } from 'os';
+import { randomUUID } from 'crypto';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import ffmpeg from 'fluent-ffmpeg';
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +23,13 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.static(path.join(__dirname, '../client')));
+app.use(express.static(path.join(__dirname, '../client'), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-store');
+  }
+}));
 app.use(express.json());
 
 const s3Client = new S3Client({
@@ -46,8 +58,9 @@ const clientRoom = new Map();
 wss.on('connection', (ws) => {
   const clientId = generateId();
   clients.set(clientId, ws);
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
 
-  console.log(`Client connected: ${clientId}`);
 
   ws.send(JSON.stringify({
     type: 'init',
@@ -57,12 +70,23 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-      console.log(`Message from ${clientId}:`, data.type);
 
       switch (data.type) {
         case 'join-room': {
           const roomId = data.room;
-          console.log(`Client ${clientId} trying to join room ${roomId}`);
+          const prevRoomId = clientRoom.get(clientId);
+          if (prevRoomId && rooms.has(prevRoomId)) {
+            const prevRoom = rooms.get(prevRoomId);
+            prevRoom.delete(clientId);
+            for (const peerId of prevRoom) {
+              const peerWs = clients.get(peerId);
+              if (peerWs) {
+                peerWs.send(JSON.stringify({ type: 'peer-left', peerId: clientId, room: prevRoomId }));
+              }
+            }
+            if (prevRoom.size === 0) rooms.delete(prevRoomId);
+            clientRoom.delete(clientId);
+          }
 
           if (!rooms.has(roomId)) {
             rooms.set(roomId, new Set());
@@ -95,8 +119,6 @@ wss.on('connection', (ws) => {
               }));
             }
           }
-
-          console.log(`Client ${clientId} joined room ${roomId} (${room.size}/${MAX_ROOM_SIZE})`);
           break;
         }
 
@@ -108,6 +130,23 @@ wss.on('connection', (ws) => {
               ...data,
               from: clientId
             }));
+          }
+          break;
+        }
+
+        case 'leave-room': {
+          const leaveRoomId = clientRoom.get(clientId);
+          if (leaveRoomId && rooms.has(leaveRoomId)) {
+            const room = rooms.get(leaveRoomId);
+            room.delete(clientId);
+            for (const peerId of room) {
+              const peerWs = clients.get(peerId);
+              if (peerWs) {
+                peerWs.send(JSON.stringify({ type: 'peer-left', peerId: clientId, room: leaveRoomId }));
+              }
+            }
+            if (room.size === 0) rooms.delete(leaveRoomId);
+            clientRoom.delete(clientId);
           }
           break;
         }
@@ -170,7 +209,6 @@ wss.on('connection', (ws) => {
 
     clientRoom.delete(clientId);
     clients.delete(clientId);
-    console.log(`Client disconnected: ${clientId}`);
   });
 });
 
@@ -178,32 +216,63 @@ function generateId() {
   return Math.random().toString(36).substring(2, 15);
 }
 
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (!ws.isAlive) {
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 5000);
+
 app.post('/api/upload-recording', upload.single('recording'), async (req, res) => {
+  const inputPath  = path.join(tmpdir(), `${randomUUID()}.webm`);
+  const outputPath = path.join(tmpdir(), `${randomUUID()}.mp4`);
+
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { roomId, timestamp } = req.body;
-    const contentType = req.file.mimetype;
-    const extension = contentType.includes('webm') ? 'webm' : 'mp4';
-    const fileName = `${process.env.S3_RECORDINGS_FOLDER || 'webrtc-recordings/'}${roomId}_${timestamp}.${extension}`;
+    // Grava o buffer em disco para o FFmpeg processar
+    await new Promise((resolve, reject) => {
+      const ws = createWriteStream(inputPath);
+      ws.on('finish', resolve);
+      ws.on('error', reject);
+      ws.end(req.file.buffer);
+    });
 
-    console.log(`Uploading recording to S3: ${fileName}`);
+    // Transcodifica WebM (Opus) → MP4 (AAC) usando FFmpeg
+    await new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .outputOptions([
+          '-c:v copy',
+          '-c:a aac',
+          '-b:a 128k',
+          '-movflags +faststart'
+        ])
+        .output(outputPath)
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
+    });
+
+    const { roomId, timestamp } = req.body;
+    const fileName = `${process.env.S3_RECORDINGS_FOLDER || 'webrtc-recordings/'}${roomId}_${timestamp}.mp4`;
 
     const upload = new Upload({
       client: s3Client,
       params: {
         Bucket: process.env.AWS_S3_BUCKET,
         Key: fileName,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype || 'video/mp4'
+        Body: createReadStream(outputPath),
+        ContentType: 'video/mp4'
       }
     });
 
     const result = await upload.done();
-
-    console.log('Upload completed:', result.Location);
 
     res.json({
       success: true,
@@ -211,11 +280,15 @@ app.post('/api/upload-recording', upload.single('recording'), async (req, res) =
       key: fileName
     });
   } catch (error) {
-    console.error('Error uploading to S3:', error);
     res.status(500).json({
       error: 'Failed to upload recording',
       message: error.message
     });
+  } finally {
+    // Limpa arquivos temporários
+    for (const p of [inputPath, outputPath]) {
+      unlink(p, () => {});
+    }
   }
 });
 

@@ -111,43 +111,30 @@ body {
   display: grid;
   gap: 6px;
   padding: 6px;
-  align-items: stretch;
+  align-content: center;
+  justify-content: center;
   overflow: hidden;
 }
 
 /* Layouts por nº de tiles (incluindo o próprio) */
 #videosGrid[data-count="1"] {
-  grid-template-columns: 1fr;
+  grid-template-columns: min(calc(100vw - 12px), calc(100vh - 82px));
 }
 
 #videosGrid[data-count="2"] {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, min(calc((100vw - 18px) / 2), calc(100vh - 82px)));
 }
 
 #videosGrid[data-count="3"] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-}
-
-/* 1º tile ocupa linha inteira quando há 3 */
-#videosGrid[data-count="3"] .video-tile:first-child {
-  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, min(calc((100vw - 24px) / 3), calc(100vh - 82px)));
 }
 
 #videosGrid[data-count="4"] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: repeat(2, min(calc((100vw - 18px) / 2), calc((100vh - 88px) / 2)));
 }
 
 #videosGrid[data-count="5"] {
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: 1fr 1fr;
-}
-
-/* 1º e 2º tiles maiores na linha de cima quando há 5 */
-#videosGrid[data-count="5"] .video-tile:nth-child(1),
-#videosGrid[data-count="5"] .video-tile:nth-child(2) {
-  grid-column: span 1;
+  grid-template-columns: repeat(3, min(calc((100vw - 24px) / 3), calc((100vh - 88px) / 2)));
 }
 
 /* tile */
@@ -156,7 +143,7 @@ body {
   background: #222;
   border-radius: 10px;
   overflow: hidden;
-  min-height: 0;
+  aspect-ratio: 1 / 1;
 }
 
 .video-tile video {
@@ -277,15 +264,11 @@ body {
   #videosGrid[data-count="3"],
   #videosGrid[data-count="4"],
   #videosGrid[data-count="5"] {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, min(calc((100vw - 18px) / 2), calc((100vh - 88px) / 2)));
   }
 
   #videosGrid[data-count="3"] .video-tile:first-child {
     grid-column: 1 / -1;
-  }
-
-  #videosGrid[data-count="5"] {
-    grid-template-columns: 1fr 1fr;
   }
 
   .room-bar {
