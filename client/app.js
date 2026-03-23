@@ -358,7 +358,7 @@ function toggleRecording() {
   }
 }
 
-function startRecording() {
+async function startRecording() {
   if (!localStream) {
     showStatus('Não há stream para gravar', 'error');
     return;
@@ -376,6 +376,7 @@ function startRecording() {
     recordingCanvas.height = 1080;
     recordingContext = recordingCanvas.getContext('2d', { willReadFrequently: true });
     recordingAudioContext = new AudioContext();
+    await recordingAudioContext.resume();
     const mixedAudioDestination = recordingAudioContext.createMediaStreamDestination();
     const localAudioSource = recordingAudioContext.createMediaStreamSource(localStream);
     localAudioSource.connect(mixedAudioDestination);
@@ -454,7 +455,8 @@ function startRecording() {
       }
       mediaRecorder = new MediaRecorder(recordStream, {
         mimeType: mimeType,
-        videoBitsPerSecond: 2500000
+        videoBitsPerSecond: 2500000,
+        audioBitsPerSecond: 128000
       });
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {

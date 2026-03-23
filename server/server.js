@@ -7,6 +7,12 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import { createReadStream, createWriteStream, unlink } from 'fs';
+import { tmpdir } from 'os';
+import { randomUUID } from 'crypto';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import ffmpeg from 'fluent-ffmpeg';
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -222,23 +228,47 @@ const heartbeatInterval = setInterval(() => {
 }, 5000);
 
 app.post('/api/upload-recording', upload.single('recording'), async (req, res) => {
+  const inputPath  = path.join(tmpdir(), `${randomUUID()}.webm`);
+  const outputPath = path.join(tmpdir(), `${randomUUID()}.mp4`);
+
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // Grava o buffer em disco para o FFmpeg processar
+    await new Promise((resolve, reject) => {
+      const ws = createWriteStream(inputPath);
+      ws.on('finish', resolve);
+      ws.on('error', reject);
+      ws.end(req.file.buffer);
+    });
+
+    // Transcodifica WebM (Opus) → MP4 (AAC) usando FFmpeg
+    await new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .outputOptions([
+          '-c:v copy',
+          '-c:a aac',
+          '-b:a 128k',
+          '-movflags +faststart'
+        ])
+        .output(outputPath)
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
+    });
+
     const { roomId, timestamp } = req.body;
-    const contentType = req.file.mimetype;
-    const extension = contentType.includes('webm') ? 'webm' : 'mp4';
-    const fileName = `${process.env.S3_RECORDINGS_FOLDER || 'webrtc-recordings/'}${roomId}_${timestamp}.${extension}`;
+    const fileName = `${process.env.S3_RECORDINGS_FOLDER || 'webrtc-recordings/'}${roomId}_${timestamp}.mp4`;
 
     const upload = new Upload({
       client: s3Client,
       params: {
         Bucket: process.env.AWS_S3_BUCKET,
         Key: fileName,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype || 'video/mp4'
+        Body: createReadStream(outputPath),
+        ContentType: 'video/mp4'
       }
     });
 
@@ -254,6 +284,11 @@ app.post('/api/upload-recording', upload.single('recording'), async (req, res) =
       error: 'Failed to upload recording',
       message: error.message
     });
+  } finally {
+    // Limpa arquivos temporários
+    for (const p of [inputPath, outputPath]) {
+      unlink(p, () => {});
+    }
   }
 });
 
