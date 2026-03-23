@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teste Canvas Recording</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #1a1a2e;
+      color: white;
+    }
+    #container {
+      display: flex;
+      gap: 20px;
+    }
+    #videos {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    video {
+      width: 320px;
+      height: 240px;
+      background: #000;
+      border: 2px solid #667eea;
+    }
+    canvas {
+      width: 640px;
+      height: 480px;
+      border: 2px solid #dc3545;
+      background: #000;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px 5px;
+      font-size: 16px;
+      cursor: pointer;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+    button.recording {
+      background: #dc3545;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    #status {
+      margin: 10px 0;
+      padding: 10px;
+      background: #333;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎥 Teste de Gravação com Canvas</h1>
+  
+  <div id="status">Status: Aguardando...</div>
+  
+  <button id="startBtn">📹 Iniciar Câmera</button>
+  <button id="recordBtn" disabled>⏺️ Gravar</button>
+  <button id="stopBtn" disabled>⏹️ Parar</button>
+  
+  <div id="container">
+    <div id="videos">
+      <h3>Vídeo Original</h3>
+      <video id="localVideo" autoplay muted playsinline></video>
+    </div>
+    <div>
+      <h3>Canvas (será gravado)</h3>
+      <canvas id="canvas"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const localVideo = document.getElementById('localVideo');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const status = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const recordBtn = document.getElementById('recordBtn');
+    const stopBtn = document.getElementById('stopBtn');
+
+    canvas.width = 1280;
+    canvas.height = 720;
+
+    let localStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let animationFrame = null;
+    let isRecording = false;
+
+    startBtn.onclick = async () => {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+        status.textContent = 'Status: Câmera iniciada ✅';
+        recordBtn.disabled = false;
+        startBtn.disabled = true;
+
+        // Inicia o desenho no canvas
+        drawToCanvas();
+      } catch (error) {
+        status.textContent = 'Erro: ' + error.message;
+      }
+    };
+
+    function drawToCanvas() {
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (localVideo.readyState >= localVideo.HAVE_CURRENT_DATA) {
+        try {
+          ctx.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+          
+          // Adiciona texto teste
+          ctx.fillStyle = 'rgba(220, 53, 69, 0.8)';
+          ctx.fillRect(10, 10, 200, 50);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 24px Arial';
+          ctx.fillText('TESTE CANVAS', 20, 45);
+          
+          if (isRecording) {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            ctx.fillText(`⏺ ${elapsed}s`, 20, 80);
+          }
+        } catch (e) {
+          console.error('Erro ao desenhar:', e);
+        }
+      }
+
+      animationFrame = requestAnimationFrame(drawToCanvas);
+    }
+
+    let recordingStartTime;
+
+    recordBtn.onclick = () => {
+      try {
+        recordedChunks = [];
+        
+        // Captura stream do canvas
+        const canvasStream = canvas.captureStream(30);
+        const videoTrack = canvasStream.getVideoTracks()[0];
+        
+        // Adiciona áudio
+        const audioTrack = localStream.getAudioTracks()[0];
+        const recordStream = new MediaStream([videoTrack, audioTrack]);
+
+        mediaRecorder = new MediaRecorder(recordStream, {
+          mimeType: 'video/webm;codecs=vp9,opus'
+        });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `teste_${Date.now()}.webm`;
+          a.click();
+          URL.revokeObjectURL(url);
+          
+          status.textContent = 'Status: Gravação salva! ✅';
+          isRecording = false;
+        };
+
+        mediaRecorder.start(1000);
+        recordingStartTime = Date.now();
+        isRecording = true;
+        
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+        recordBtn.classList.add('recording');
+        status.textContent = 'Status: 🔴 GRAVANDO...';
+
+      } catch (error) {
+        status.textContent = 'Erro ao gravar: ' + error.message;
+        console.error(error);
+      }
+    };
+
+    stopBtn.onclick = () => {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+        recordBtn.classList.remove('recording');
+      }
+    };
+  </script>
+</body>
+</html>

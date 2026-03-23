@@ -1,43 +1,42 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebRTC Call</title>
-  <link rel="stylesheet" href="style.css">
+  <title>WebRTC — Sala de Vídeo</title>
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
-  <div class="container">
-    <h1>WebRTC 1-to-1 Call</h1>
-
-    <div class="connection-info">
-      <p>Your ID: <strong id="myId">Connecting...</strong></p>
-      <div class="call-controls">
-        <input type="text" id="targetId" placeholder="Recipient ID">
-        <button id="callBtn">Call</button>
+  <!-- Tela de entrada -->
+  <div id="lobby">
+    <div class="lobby-card">
+      <h1>WebRTC — Sala de Vídeo</h1>
+      <p class="lobby-subtitle">Até 5 participantes por sala</p>
+      <div class="lobby-form">
+        <input type="text" id="roomId" placeholder="ID da sala (ex: sala123)" autocomplete="off">
+        <button id="joinBtn">Entrar na Sala</button>
       </div>
+      <p class="lobby-id">Seu ID: <strong id="myId">Conectando...</strong></p>
+      <div id="lobbyStatus"></div>
     </div>
-
-    <div class="videos">
-      <div class="video-container">
-        <video id="localVideo" autoplay muted playsinline></video>
-        <p>You</p>
-      </div>
-      <div class="video-container">
-        <video id="remoteVideo" autoplay playsinline></video>
-        <p>Remote</p>
-      </div>
-    </div>
-
-    <div class="controls">
-      <button id="muteBtn" class="control-btn">🎤 Mute</button>
-      <button id="videoBtn" class="control-btn">📹 Video</button>
-      <button id="hangupBtn" class="control-btn danger">📞 Hang Up</button>
-    </div>
-
-    <div id="status"></div>
   </div>
 
-  <script src="app.js"></script>
+  <!-- Sala de vídeo -->
+  <div id="room" class="hidden">
+    <div id="videosGrid"></div>
+
+    <div class="room-bar">
+      <span id="roomLabel" class="room-name"></span>
+      <div class="room-controls">
+        <button id="muteBtn" class="ctrl-btn" title="Microfone">🎤</button>
+        <button id="videoBtn" class="ctrl-btn" title="Câmera">📹</button>
+        <button id="recordBtn" class="ctrl-btn" title="Gravar">⏺️</button>
+        <button id="hangupBtn" class="ctrl-btn danger" title="Sair">📞</button>
+      </div>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <script src="app.js?v=6"></script>
 </body>
 </html>
