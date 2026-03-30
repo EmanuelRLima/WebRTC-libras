@@ -118,7 +118,14 @@ function connectWebSocket() {
         case 'init':
           myId = data.id;
           myIdElement.textContent = myId;
+          // Auto-join quando o parâmetro ?room= está na URL (integração iLibras)
+          const autoRoom = new URLSearchParams(window.location.search).get('room');
+          if (autoRoom) {
+            roomIdInput.value = autoRoom;
+            joinRoom();
+          }
           break;
+
 
         case 'room-joined':
           await enterRoom(data.room, data.peers.filter(id => id !== myId));
@@ -545,6 +552,14 @@ async function uploadRecording(blob) {
   }
 }
 
+const isEmbedMode = new URLSearchParams(window.location.search).get('mode') === 'embed';
+
+if (isEmbedMode) {
+  // No modo embed, esconde a tela de lobby — vai direto para a sala
+  document.body.style.background = 'transparent';
+  if (lobbyEl) lobbyEl.style.display = 'none';
+}
+
 function hangup() {
   if (isRecording) {
     stopRecording();
@@ -586,6 +601,13 @@ function hangup() {
   }
   currentRoom = null;
   roomEl.classList.add('hidden');
+
+  // Notifica o pai (iLibras) que a chamada foi encerrada
+  if (isEmbedMode && window.parent !== window) {
+    window.parent.postMessage({ type: 'webrtc-hangup' }, '*');
+    return; // não mostra lobby no modo embed
+  }
+
   lobbyEl.classList.remove('hidden');
   showLobbyStatus('Você saiu da sala', 'info');
 }

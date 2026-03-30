@@ -23,6 +23,27 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// Sobrescreve o CSP restritivo que o ngrok injeta, permitindo fontes, imagens e mídia
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+    "media-src * blob: data:; " +
+    "img-src * data: blob:; " +
+    "font-src * data:; " +
+    "connect-src * wss: ws:;"
+  );
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '../client'), {
   etag: false,
   lastModified: false,
